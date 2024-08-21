@@ -1,0 +1,109 @@
+version: "3"
+
+services:
+    # App
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        restart: unless-stopped
+        working_dir: /var/www/
+        volumes:
+            - ./:/var/www
+        depends_on:
+            - redis
+        networks:
+            - laravel
+
+    # nginx
+    nginx:
+        image: nginx:alpine
+        restart: unless-stopped
+        ports:
+            - "8000:80"
+        volumes:
+            - ./:/var/www
+            - ./docker/nginx/:/etc/nginx/conf.d/
+        networks:
+            - laravel
+
+    # MySQL
+    db:
+        image: mysql:5.7.22
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_USER: ${DB_USERNAME}
+        volumes:
+            - ./.docker/mysql/dbdata:/var/lib/mysql
+        ports:
+            - 3307:3306
+        networks:
+            - laravel
+
+    # PHPMyAdmin
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin
+        platform: linux/x86_64
+        restart: unless-stopped
+        ports:
+            - "8080:80"
+        environment:
+            PMA_HOST: db
+            PMA_PORT: 3306
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+        networks:
+            - laravel
+
+    # MailHog
+    mailhog:
+        image: mailhog/mailhog
+        logging:
+            driver: "none" # disable saving logs
+        ports:
+            - "1025:1025" # smtp server
+            - "8025:8025" # web ui
+        networks:
+            - laravel
+
+    # Queue
+    queue:
+        build:
+            context: ./
+            dockerfile: Dockerfile
+        restart: unless-stopped
+        command: "php artisan queue:work"
+        volumes:
+            - ./:/var/www
+        depends_on:
+            - redis
+            - app
+        networks:
+            - laravel
+
+    # Horizon
+    horizon:
+        build:
+            context: ./
+            dockerfile: Dockerfile
+        restart: unless-stopped
+        command: "php artisan horizon"
+        volumes:
+            - ./:/var/www
+        depends_on:
+            - redis
+            - app
+        networks:
+            - laravel
+
+    # Redis
+    redis:
+        image: redis:latest
+        networks:
+            - laravel
+
+networks:
+    laravel:
+        driver: bridge
